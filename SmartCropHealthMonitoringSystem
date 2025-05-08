@@ -1,0 +1,111 @@
+# from keras.applications import MobileNet
+from keras.layers import Dense, GlobalAveragePooling2D
+from keras.models import Model
+from keras.optimizers import Adam
+from keras.preprocessing.image import ImageDataGenerator
+
+# Loading the MobileNet model with pre-trained weights, excluding the top layer
+base_model = MobileNet(weights='imagenet', include_top=False)
+
+
+# Add custom top layers for your classification task
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(1024, activation='relu')(x)
+predictions = Dense(4, activation='softmax')(x)  # Assuming 4 classes
+  # Assuming 4 classes
+
+# final model
+model = Model(inputs=base_model.input, outputs=predictions)
+
+# Freezing the layers of the pre-trained model
+for layer in base_model.layers:
+    layer.trainable = False
+
+# Compiling the model
+
+model.compile(optimizer=Adam(learning_rate=0.0005), loss='categorical_crossentropy', metrics=['accuracy'])  # Adjust learning rate here
+
+
+
+# Data generators
+train_datagen = ImageDataGenerator(rescale=1./255, shear_range=0.2, zoom_range=0.2, horizontal_flip=True)
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    r'C:\Users\hp\Desktop\New folder (3)\train',
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+validation_generator = test_datagen.flow_from_directory(
+    r'C:\Users\hp\Desktop\New folder (3)\validation',
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+# Fine-tuning the model
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // train_generator.batch_size,
+    epochs=25,  
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // validation_generator.batch_size
+)
+
+loss, accuracy = model.evaluate(validation_generator)
+print('Validation Loss:', loss)
+print('Validation Accuracy:', accuracy)
+
+
+
+model.save('my_model.h5')
+
+
+import cv2 
+import numpy as np
+
+disease_medicine_map = {
+    "Brown Spot": "Tebuconazole",
+    "Healthy": "No treatment needed",
+    "Leaf Blast": "Tricyclazole",
+    "Neck Blast": "Strobilurins"
+}
+
+#  preprocess the image 
+def preprocess_image(image_path):
+    img = cv2.imread(image_path)
+    resized_img = cv2.resize(img, (224, 224))  
+    normalized_img = resized_img.astype(np.float32) / 255.0
+    return normalized_img
+
+#  predictions 
+def predict(image_path):
+
+    model = tf.keras.models.load_model('my_model.h5')  
+
+    # Preprocess the image
+    preprocessed_image = preprocess_image(image_path)
+
+    # predictions using your model
+    predictions = model.predict(np.expand_dims(preprocessed_image, axis=0)) 
+
+    # Get the class index with the highest probability
+    predicted_disease_index = np.argmax(predictions)
+    predicted_disease = list(disease_medicine_map.keys())[predicted_disease_index]
+
+    return predicted_disease
+
+#usage
+image_path = r"C:\Users\hp\Downloads\WhatsApp Image 2024-04-02 at 9.21.43 PM.jpeg"
+predicted_disease = predict(image_path)
+recommended_medicine = disease_medicine_map.get(predicted_disease)
+
+print(f"Predicted Disease: {predicted_disease}")
+
+if recommended_medicine:
+    print(f"Recommended Medicine: {recommended_medicine}")
+else:
+    print("No recommended medicine found for this disease in the data.")
